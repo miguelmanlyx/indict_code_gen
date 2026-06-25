@@ -1,12 +1,13 @@
-# Badgr Pipeline Check — launch proof + stress test
+# Badgr CI Check — GitHub Actions stress test
 #
-# Works with zero credentials (no BADGR_API_KEY, no GITHUB_TOKEN secrets):
-#   - Failure/security via BADGR_LOG_FILE
-#   - Config audit via BADGR_PIPELINE_FILE (workflow path)
-#   - Report in step log (BADGR_OUTPUT_MODE=both) + Job Summary tab
+# Works with zero credentials (no secrets required):
+#   - Failure/security capture via step logs
+#   - Diagnosis via michaelmanly/badgr-ci@v1 published action
+#   - Report in Job Summary tab (no API key needed for rules-based diagnosis)
 #
 # Optional:
 #   - Secret BADGR_API_KEY → AI analysis for low-confidence failures
+#   - GITHUB_TOKEN → PR comments + richer diagnostics
 #
 # Expect ~3 min runtime (includes a deliberate slow step for health heuristics).
 #
@@ -24,6 +25,8 @@ on:
 permissions:
   contents: read
   actions: read
+  pull-requests: write
+  checks: write
 
 jobs:
   badgr-ci-check:
@@ -77,7 +80,6 @@ jobs:
       - name: Build and test
         run: |
           set -euo pipefail
-          LOG="${{ runner.temp }}/badgr-fail.log"
           {
             echo "npm ERR! code ERESOLVE"
             echo "npm ERR! ERESOLVE unable to resolve dependency tree"
@@ -98,14 +100,13 @@ jobs:
             echo "Tests: 3 failed, 12 passed"
             echo "npm ERR! errno 1"
             echo "npm ERR! command failed with exit code 1"
-          } | tee "$LOG"
+          }
           exit 1
 
       - name: Badgr Pipeline Check
+        id: badgr
         if: always()
-        run: |
-          set -euo pipefail
-          BADGR_OUTPUT_MODE=both \
-          BADGR_LOG_FILE="${{ runner.temp }}/badgr-fail.log" \
-          BADGR_PIPELINE_FILE="${{ github.workspace }}/.github/workflows/badgr-ci-check.yml" \
-            node "${{ github.workspace }}/azure-pipelines/fixtures/badgr-azure-bundle.mjs" >> "$GITHUB_STEP_SUMMARY" 2>&1 || true
+        uses: michaelmanly/badgr-ci@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          badgr_api_key: ${{ secrets.BADGR_API_KEY }}
