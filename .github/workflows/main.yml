@@ -1,0 +1,61 @@
+# E2E: published GitHub Action michaelmanly/badgr-ci@v1
+# Fails on purpose → Badgr fetches logs → posts diagnosis (PR comment or job summary).
+#
+# Manual run:  gh workflow run badgr-ci-e2e.yml
+# Watch:       gh run watch
+name: Badgr CI E2E (published action)
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/badgr-ci-e2e.yml"
+      - "packages/badgr-agent/**"
+      - "scripts/export-badgr-ci-action.sh"
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+  checks: write
+
+jobs:
+  badgr-ci-e2e:
+    name: Fail → diagnose with michaelmanly/badgr-ci@v1
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Intentionally fail (e2e fixture)
+        run: |
+          echo "ModuleNotFoundError: No module named 'pytest'"
+          echo "ERROR: Badgr CI E2E — simulated test failure"
+          exit 1
+
+      - name: Badgr Agent CI (published)
+        id: badgr
+        uses: michaelmanly/badgr-ci@v1
+        if: failure()
+        with:
+          badgr_api_key: ${{ secrets.BADGR_API_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify diagnosis posted
+        if: failure() && steps.badgr.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f "$GITHUB_STEP_SUMMARY" ] && grep -q "badgr-agent-diagnosis" "$GITHUB_STEP_SUMMARY"; then
+            echo "E2E PASS — Badgr Agent CI wrote job summary"
+            exit 0
+          fi
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            pr="${{ github.event.pull_request.number }}"
+            gh api "repos/${{ github.repository }}/issues/${pr}/comments" --jq '.[].body' \
+              | grep -q "Badgr Agent CI" || { echo "No Badgr PR comment found"; exit 1; }
+            echo "E2E PASS — Badgr Agent CI PR comment"
+            exit 0
+          fi
+          echo "Diagnosis not found in job summary"
+          test -f "$GITHUB_STEP_SUMMARY" && cat "$GITHUB_STEP_SUMMARY"
+          exit 1
