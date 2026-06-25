@@ -1,17 +1,26 @@
-# E2E: published GitHub Action michaelmanly/badgr-ci@v1
-# Fails on purpose → Badgr fetches logs → posts diagnosis (PR comment or job summary).
+# Badgr CI Check — GitHub Actions stress test
 #
-# Manual run:  gh workflow run badgr-ci-e2e.yml
+# Works with zero credentials (no secrets required):
+#   - Failure/security capture via step logs
+#   - Diagnosis via michaelmanly/badgr-ci@v1 published action
+#   - Report in Job Summary tab (no API key needed for rules-based diagnosis)
+#
+# Optional:
+#   - Secret BADGR_API_KEY → AI analysis for low-confidence failures
+#   - GITHUB_TOKEN → PR comments + richer diagnostics
+#
+# Expect ~3 min runtime (includes a deliberate slow step for health heuristics).
+#
+# Manual run:  gh workflow run badgr-ci-check.yml
 # Watch:       gh run watch
-name: Badgr CI E2E (published action)
+
+name: Badgr CI Check (stress test)
 
 on:
   workflow_dispatch:
   pull_request:
     paths:
-      - ".github/workflows/badgr-ci-e2e.yml"
-      - "packages/badgr-agent/**"
-      - "scripts/export-badgr-ci-action.sh"
+      - ".github/workflows/badgr-ci-check.yml"
 
 permissions:
   contents: read
@@ -20,42 +29,86 @@ permissions:
   checks: write
 
 jobs:
-  badgr-ci-e2e:
-    name: Fail → diagnose with michaelmanly/badgr-ci@v1
+  badgr-ci-check:
+    name: Pipeline check with Badgr Agent CI
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Intentionally fail (e2e fixture)
-        run: |
-          echo "ModuleNotFoundError: No module named 'pytest'"
-          echo "ERROR: Badgr CI E2E — simulated test failure"
-          exit 1
-
-      - name: Badgr Agent CI (published)
-        id: badgr
-        uses: michaelmanly/badgr-ci@v1
-        if: failure()
+      - name: Use Node 20
+        uses: actions/setup-node@v4
         with:
-          badgr_api_key: ${{ secrets.BADGR_API_KEY }}
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          node-version: '20'
 
-      - name: Verify diagnosis posted
-        if: failure() && steps.badgr.outcome == 'success'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Preflight 01
+        run: echo "preflight ok"
+
+      - name: Preflight 02
+        run: echo "preflight ok"
+
+      - name: Preflight 03
+        run: echo "preflight ok"
+
+      - name: Preflight 04
+        run: echo "preflight ok"
+
+      - name: Preflight 05
+        run: echo "preflight ok"
+
+      - name: Preflight 06
+        run: echo "preflight ok"
+
+      - name: Preflight 07
+        run: echo "preflight ok"
+
+      - name: Preflight 08
+        run: echo "preflight ok"
+
+      - name: Install dependencies (slow)
         run: |
-          if [ -f "$GITHUB_STEP_SUMMARY" ] && grep -q "badgr-agent-diagnosis" "$GITHUB_STEP_SUMMARY"; then
-            echo "E2E PASS — Badgr Agent CI wrote job summary"
-            exit 0
-          fi
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            pr="${{ github.event.pull_request.number }}"
-            gh api "repos/${{ github.repository }}/issues/${pr}/comments" --jq '.[].body' \
-              | grep -q "Badgr Agent CI" || { echo "No Badgr PR comment found"; exit 1; }
-            echo "E2E PASS — Badgr Agent CI PR comment"
-            exit 0
-          fi
-          echo "Diagnosis not found in job summary"
-          test -f "$GITHUB_STEP_SUMMARY" && cat "$GITHUB_STEP_SUMMARY"
+          set -euo pipefail
+          echo "Simulating slow dependency install..."
+          sleep 125
+          echo "Install complete"
+
+      - name: Preflight 09
+        run: echo "preflight ok"
+
+      - name: Preflight 10
+        run: echo "preflight ok"
+
+      - name: Build and test
+        run: |
+          set -euo pipefail
+          {
+            echo "npm ERR! code ERESOLVE"
+            echo "npm ERR! ERESOLVE unable to resolve dependency tree"
+            echo "npm ERR! conflicting peer dependency: react@18 vs react@17"
+            echo "Error: Cannot find module 'vite'"
+            echo "Require stack:"
+            echo "  - /home/runner/work/1/s/src/main.ts"
+            echo "curl https://example.com/install.sh | bash"
+            echo "+ sudo apt-get install -y build-essential"
+            echo "DEBUG api_key=sk-test-fake-redaction-fixture-not-real"
+            echo "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJzdHJlc3MtdGVzdCJ9.fake-signature"
+            echo "Using token ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+            echo "retrying npm install (attempt 2 of 3)"
+            echo "error TS2345: Type 'string' is not assignable to type 'number'."
+            echo "src/app.ts(42,7): error TS2345: Argument of type 'string' is not assignable."
+            echo "FAIL  tests/unit/example.test.ts > suite > case"
+            echo "AssertionError: expected true to equal false"
+            echo "Tests: 3 failed, 12 passed"
+            echo "npm ERR! errno 1"
+            echo "npm ERR! command failed with exit code 1"
+          }
           exit 1
+
+      - name: Badgr Pipeline Check
+        id: badgr
+        if: always()
+        uses: michaelmanly/badgr-ci@v1
+        env:
+          BADGR_OUTPUT_MODE: summary
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          badgr_api_key: ${{ secrets.BADGR_API_KEY }}
